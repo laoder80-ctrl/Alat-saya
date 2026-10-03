@@ -1,0 +1,111 @@
+# --- FUNGSI MANAJEMEN TOKEN ---
+def get_user_balance(user_id):
+    return user_balances.get(str(user_id), 0)
+
+def add_user_balance(user_id, amount):
+    uid = str(user_id)
+    if uid not in user_balances:
+        user_balances[uid] = 0
+    user_balances[uid] += amount
+    save_balances()
+
+def deduct_user_balance(user_id, amount):
+    uid = str(user_id)
+    if uid not in user_balances:
+        user_balances[uid] = 0
+    user_balances[uid] -= amount
+    save_balances()
+
+# --- FUNGSI MENDAPATKAN LOGO ---
+def get_logo():
+    global CACHED_LOGO
+    if CACHED_LOGO is not None:
+        return CACHED_LOGO
+    try:
+        r = requests.get("https://marine-peach-hbbcp3rg.edgeone.dev/IMG_20260625_210633_220.jpg", timeout=10)
+        if r.status_code == 200:
+            logo = Image.open(io.BytesIO(r.content)).convert("RGBA")
+            
+            mask = Image.new('L', logo.size, 0)
+            draw = ImageDraw.Draw(mask)
+            draw.ellipse((0, 0, logo.size[0], logo.size[1]), fill=255)
+            
+            logo.putalpha(mask)
+            CACHED_LOGO = logo
+            return CACHED_LOGO
+    except Exception as e:
+        print(f"Gagal memuat logo watermark: {e}")
+        pass
+    return None
+
+# --- FUNGSI WATERMARK ---
+def apply_watermark(image_bytes):
+    if not PILLOW_INSTALLED: return image_bytes
+    try:
+        img = Image.open(image_bytes).convert("RGBA")
+        width, height = img.size
+        
+        logo = get_logo()
+        if logo:
+            logo_w = int(width * 0.15) 
+            if logo_w < 40: logo_w = 40
+            w_percent = (logo_w / float(logo.size[0]))
+            h_size = int((float(logo.size[1]) * float(w_percent)))
+            
+            try:
+                logo_resized = logo.resize((logo_w, h_size), Image.Resampling.LANCZOS)
+            except AttributeError:
+                logo_resized = logo.resize((logo_w, h_size), Image.ANTIALIAS)
+                    
+            pos_x = width - logo_w - 15
+            pos_y = 15
+            img.paste(logo_resized, (pos_x, pos_y), logo_resized)
+        
+        txt = Image.new("RGBA", img.size, (255,255,255,0))
+        draw = ImageDraw.Draw(txt)
+        
+        try:
+            font_size = max(15, int(width * 0.04)) 
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+        except:
+            font = ImageFont.load_default()
+            
+        text = "© Связь Telegram BOT"
+        
+        try:
+            bbox = draw.textbbox((0, 0), text, font=font, align="center")
+            t_width = bbox[2] - bbox[0]
+            t_height = bbox[3] - bbox[1]
+        except AttributeError:
+            t_width, t_height = draw.textsize(text, font=font)
+            
+        x = (width - t_width) / 2
+        y = height - t_height - 25 
+        
+        draw.text((x, y), text, fill=(255, 255, 255, 160), font=font, align="center")
+        
+        combined = Image.alpha_composite(img, txt)
+        bio = io.BytesIO()
+        combined.convert("RGB").save(bio, format='JPEG', quality=95)
+        bio.seek(0)
+        return bio
+    except Exception as e:
+        print(f"Error Watermark: {e}")
+        return image_bytes
+
+# --- FUNGSI ERROR FORMAT SALAH ---
+def send_format_error(bot_instance, message, cmd):
+    if cmd == '/status':
+        bot_instance.reply_to(message, "⚠️ Format salah\nGunakan: /status 628xx")
+        return
+    if cmd == '/infoimei':
+        bot_instance.reply_to(message, "⚠️ Format salah\nGunakan: /infoimei 86xx")
+        return
+
+    contoh_map = {
+        '/p2n': '081234567890', '/phone': '081234567890', '/phone2imei': '081234567890',
+        '/imei2phone': '350381397976788', '/imei': '350381397976788',
+        '/nik': '3171052804990007', '/nkk': '3174040609121004', '/n2p': '3171052804990007', 
+        '/imigrasi': '3171052804990007',
+        '/ktp': 'Muhammad Andi', '/email': 'andi@gmail.com', '/prof': 'nomor 6281234567890'
+    }
